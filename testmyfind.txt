@@ -1,0 +1,34 @@
+#include <sys/types.h>
+#include <dirent.h>
+#include <stdlib.h>
+#include <stdio.h>
+
+void main(int argc, char *argv[])
+{
+	printf ("Hello World!")
+	
+	char pfad[] = "/home/ic17b065/testdir/";
+	DIR *dirp = opendir (pfad);
+	
+	if (dirp == NULL)
+	{
+		puts("Fehler: Kann Ordner nicht finden;
+		exit(1);
+	}
+	else
+	{
+		printf("OK");
+	}
+	printf("----");
+	
+	struct dirent *file;
+	
+	while (file = readdir(dirp))
+	{
+		printf("%s\n", file->d_name);
+	}
+	
+}	
+	
+	
+	
