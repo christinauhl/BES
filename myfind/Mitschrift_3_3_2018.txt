@@ -1,0 +1,29 @@
+#include <sys/types.h>
+#include <dirent.h>
+#include <stdlib.h>
+#include <stdio.h>
+
+void main(int argc, char *argv[]{
+	printf(“Hello World!“);
+
+	char pfad[] = “/home/ic17b089/dir/“; //char-array wo ich hin will
+
+	DIR *fd = opendir(pfad); //Funktionsaufruf
+	
+	if(fd == NULL){
+		printf(“Fehler: Kann Ordner nicht öffnen“)
+		exit(1);
+	}
+
+}
+
+
+Kompiliercode:
+gcc 52 dir.c -o outputfilename
+
+gcc52 -Wall -Werror -Wextra -Wstrict-prototypes -Wformat=2 -pedantic -fno-common -ftrapv -O3 -g -std=gnu11
+
+
+./dir
+
+
