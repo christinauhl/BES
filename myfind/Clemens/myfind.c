@@ -36,24 +36,19 @@
 * -------------------------------------------------------------- typedefs --
 */
 
-
-/* ### FB_TMG: Argumente mit komplexem Datentyp (i.e., structs)
-sollten besser als const * übergeben werden =>
-const struct stat *file_stat*/
-
 /*
 * ------------------------------------------------------------- functions --
 */
 static void do_file(const char * file_name, const char * const * parms);
 static void do_dir(const char * dir_name, const char * const * parms);
-/*static void do_show_usage(const char* const * parms);
-static void do_check_parms(const char * const * parms);*/
+static void do_print(const char * file_name, const char * const * arg);
+//static void do_check_parms(const char * const * parms);
 
 int main(int argc, const char const *argv[])
 {
-	if (argc > 1) /*first parameter is mandatory, dont use default '.' because it could lead to problems when file_name starts with '-'*/
+	if (argc > 1) //check if there are arguments on commandline
 	{
-		/*check_parms(&(argv[2]));*/
+		/*do_check_parms(&(argv[2]));*/
 		do_file(argv[1], &(argv[2]));
 	}
 	else /*no file or directory specified*/
@@ -90,36 +85,14 @@ static void do_file(const char *file_name, const char * const * parms)
 		return;
 	}
 
-	/*print_if_match(file_name, parms);*/
-
-	fprintf(stdout, "%s %s\n", file_name, *parms);
+	do_print(file_name, parms);
+	//fprintf(stdout, "%s\n", file_name);
 
 	if (S_ISDIR(buf.st_mode))
 	{
 		do_dir(file_name, parms);
 	}
 
-	/* else if(S_ISLINK(st.st_mode))
-	{
-	// This entry is a symbolic link
-	}
-	else if(S_ISREG(st.st_mode))
-	{
-	// This entry is a regular file
-	}*/
-
-	/*printf("File type:                ");
-
-	switch (sb.st_mode & S_IFMT) {
-	case S_IFBLK:  printf("block device\n");            break;
-	case S_IFCHR:  printf("character device\n");        break;
-	case S_IFDIR:  printf("directory\n");               break;
-	case S_IFIFO:  printf("FIFO/pipe\n");               break;
-	case S_IFLNK:  printf("symlink\n");                 break;
-	case S_IFREG:  printf("regular file\n");            break;
-	case S_IFSOCK: printf("socket\n");                  break;
-	default:       printf("unknown?\n");                break;
-	}*/
 	return;
 }
 
@@ -199,5 +172,33 @@ static void do_dir(const char * dir_name, const char * const * parms)
 	return;
 }
 
+static void do_print(const char * file_name, const char * const * arg)
+{
+	char **current_arg;
+	current_arg = (char**)arg;
+	int printed = 0;
 
+	
+	while (*current_arg != NULL)
+	{
+		if (strcmp(*current_arg, "-print") == 0)
+		{
+			fprintf(stdout, "%s\n", file_name);
+			printed = 1;
+		}
+
+		if (*current_arg != NULL)
+		{
+			current_arg++;
+		}
+
+	}
+
+	if (printed == 0) //default print
+	{
+		fprintf(stdout, "%s\n", file_name);
+	}
+
+	return;
+}
 
