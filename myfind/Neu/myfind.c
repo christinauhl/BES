@@ -16,18 +16,21 @@
 /*
 * -------------------------------------------------------------- includes --
 */
-#include <dirent.h> // readdir, opendir...
+#include <dirent.h> // readdir, opendir
 #include <stdio.h> // fprintf
 #include <errno.h> // errno
 #include <sys/stat.h> // lstat, stat
 #include <string.h> // strcmp
 #include <pwd.h> // getpwnam, getpwuid
-#include <limits.h>
+#include <limits.h> //
+#include <libgen.h> //basename
 #include <fnmatch.h> // fnmatch
 #include <stdbool.h> // type bool, true, false
 #include <unistd.h> // readlink
 #include <stdlib.h> // calloc, free
 #include <time.h> // localtime
+#include <fcntl.h>
+#include <sys/types.h>
 
 /*
 * --------------------------------------------------------------- defines --
@@ -44,12 +47,14 @@ enum Bool{ FALSE, TRUE };
 static void do_file(const char * file_name, const char * const * parms, const int offset);
 static void do_dir(const char * dir_name, const char * const * parms, const int offset);
 
-static int do_print(const char * file_name, const char * const * arg);
+static int do_print(const char * file_name, const char * const * parms);
 static int do_check_parms(const char * const * parms);
 static int do_user(const struct stat buffer, const char * const * parms, const int offset);
+static int do_name(const char * file_name, const char * const * parms, const int offset);
 static int do_nouser(const struct stat buffer, const char * const * parms);
-static int do_type(const struct stat buffer, const char* const* parms, const int offset);
+static int do_type(const struct stat buffer, const char * const * parms, const int offset);
 static char get_type(const mode_t mode);
+static int do_path(const char * file_name, const char * const * parms, const int offset);
 
 int main(int argc, const char const *argv[])
 {
@@ -116,10 +121,13 @@ static void do_file(const char *file_name, const char * const * parms, const int
 
 		if (strcmp(*(parms + new_offset), "-name") == 0)
 		{
-			//check_action = do_name(file_name, parms, new_offset + 1);
-			check_action = ERROR;
-			new_offset = new_offset + 2;
-			continue;
+			check_action = do_name(file_name, parms, (new_offset + 1));
+			if (check_action == SUCCESS)
+			{
+				do_print(file_name, parms);
+				return;
+			}
+			
 		}
 		if (strcmp(*(parms + new_offset), "-type") == 0)
 		{
@@ -154,10 +162,13 @@ static void do_file(const char *file_name, const char * const * parms, const int
 		}
 		if (strcmp(*(parms + new_offset), "-path") == 0)
 		{
-			//check_action = do_path(file_name, parms, (new_offset + 1));
-			check_action = ERROR;
-			new_offset = new_offset + 2;
-			continue;
+			check_action = do_path(file_name, parms, (new_offset + 1));
+			if (check_action == SUCCESS)
+			{
+				do_print(file_name, parms);
+				return;
+			}
+			
 		}
 	}
 
@@ -190,19 +201,19 @@ static void do_dir(const char * dir_name, const char * const * parms, const int 
 		return;
 	}
 
-	errno = 0; /*reset errno*/
+	errno = 0; //reset errno
 	dp = readdir(dirp);
 	
 	while (dp != NULL)
 	{
 		sub_file_name = dp->d_name;
 
-		/*excluding . and ..*/
+		//excluding . and ..
 		if (strcmp(sub_file_name, ".") != 0 && strcmp(sub_file_name, "..") != 0)
 		{
 			char new_path[sizeof(char) * (strlen(dir_name) + strlen(sub_file_name) + 2)];
 
-			/*generate new dir or file path*/
+			//new dir or file path
 			if (dir_name[strlen(dir_name) - 1] == '/')
 			{
 				sprintf(new_path, "%s%s", dir_name, sub_file_name);
@@ -211,19 +222,10 @@ static void do_dir(const char * dir_name, const char * const * parms, const int 
 			{
 				sprintf(new_path, "%s/%s", dir_name, sub_file_name);
 			}
-
-			/*fprintf(stdout, "%s\n", new_path);*/
-
+			
 			do_file(new_path, parms, offset);
 		}
-
-		/*if (errno != 0)
-		{
-			fprintf(stderr, "%s: %s - ´%s'\n", *parms, dir_name, strerror(errno));
-			errno = 0; 
-			continue;
-		}*/
-		
+				
 		errno = 0;
 		dp = readdir(dirp);
 
@@ -257,7 +259,7 @@ static int do_print(const char * file_name, const char * const * parms)
 }
 
 /*
-*function to check the prompted parameters on correctness
+*function to check the prompted action and parameters on correctness
 */
 static int do_check_parms(const char * const * parms)
 {
@@ -307,12 +309,12 @@ static int do_check_parms(const char * const * parms)
 						if (uid == LONG_MAX || uid == LONG_MIN)
 						{
 							fprintf(stderr, "%s: error overflow when trying to parse -user %s\n", *parms, *(cur_Arg + 1));
-							exit(EXIT_FAILURE);
+							return ERROR;
 						}
 						if (*p_end != '\0')
 						{							
 							fprintf(stderr, "%s: %s is not the name of a known user\n", *parms, *(cur_Arg + 1));
-							exit(EXIT_FAILURE);
+							return ERROR;
 						}
 					}
 				}
@@ -408,6 +410,34 @@ static int do_user(const struct stat buffer, const char * const * parms, const i
 
 }
 
+
+/*
+*Checks and compares if the filename is the prompted name or not
+*/
+static int do_name(const char * file_name, const char * const * parms, const int offset)
+{
+	int fnmatch_result;
+	
+	//VLA
+	char temp_file_name[strlen(file_name) + 1];
+	char *base_name;
+
+	memcpy(temp_file_name, file_name, strlen(file_name) + 1);
+	base_name = basename(temp_file_name);
+
+	//check if basename matches pattern in name
+	fnmatch_result = fnmatch(*(parms + offset), base_name, FNM_NOESCAPE);
+	
+	if (fnmatch_result == 0)
+	{
+		return SUCCESS;
+	}
+	
+	return ERROR;
+}
+
+
+
 /*
 *Checks if the file has no user
 *TRUE if there is a file with no user
@@ -435,10 +465,10 @@ static int do_nouser(const struct stat buffer, const char * const * parms)
 }
 
 /*
-*SUCCESS if the given file has the searched parameter 
-*EXIT if the file has not the searched parameter like as find
+*SUCCESS if the given file has the searched pattern
+*EXIT if the file has not the searched pattern like as find
 */
-static int do_type(const struct stat buffer, const char* const* parms, const int offset)
+static int do_type(const struct stat buffer, const char * const* parms, const int offset)
 {
 	char type_char = NULL;
 
@@ -497,6 +527,24 @@ static char get_type(const mode_t mode)
 	}
 	return type;
 }
+
+/*
+*checks the path against the prompted filepath
+*/
+static int do_path(const char * file_name, const char * const * parms, const int offset)
+{
+	int fnmatch_result;
+
+	fnmatch_result = fnmatch(*(parms + offset), file_name, FNM_NOESCAPE);
+
+	if (fnmatch_result == 0)
+	{
+		return SUCCESS;
+	}
+
+	return ERROR;
+}
+
 
 
 
