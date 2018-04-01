@@ -37,7 +37,7 @@
 /*
 * -------------------------------------------------------------- typedefs --
 */
-
+enum Bool{ FALSE, TRUE };
 /*
 * ------------------------------------------------------------- functions --
 */
@@ -45,15 +45,18 @@ static void do_file(const char * file_name, const char * const * parms, const in
 static void do_dir(const char * dir_name, const char * const * parms, const int offset);
 
 static int do_print(const char * file_name, const char * const * arg);
-static int do_check_parms(const char * const * parms, const int offset);
-static int do_user(const char * file_name, const char * const * parms, const int offset);
+static int do_check_parms(const char * const * parms);
+static int do_user(const struct stat buffer, const char * const * parms, const int offset);
+static int do_nouser(const struct stat buffer, const char * const * parms);
+static int do_type(const struct stat buffer, const char* const* parms, const int offset);
+static char get_type(const mode_t mode);
 
 int main(int argc, const char const *argv[])
 {
 	if (argc > 1) //check if there are arguments on commandline
 	{
 		//check for correct parameter, if incorret exit, correct start process
-		if ((do_check_parms(argv, 2)) == ERROR)
+		if (do_check_parms(argv) == ERROR)
 		{
 			exit(EXIT_FAILURE);
 		}
@@ -88,7 +91,7 @@ static void do_file(const char *file_name, const char * const * parms, const int
 	struct stat buf;
 	int new_offset = offset;
 	int check_action = SUCCESS;
-	int print_done = ERROR;
+	int print_done = FALSE;
 
 
 	if (lstat(file_name, &buf) == -1)
@@ -102,15 +105,12 @@ static void do_file(const char *file_name, const char * const * parms, const int
 	*first ((argv[0] + (new_offset=2)) and depending on the action if
 	*there is an argument (new_offset = new_offset + 1 or + 2)
 	*/
-	while (*(parms + new_offset) != NULL || check_action == ERROR)
+	while (*(parms + new_offset) != NULL && check_action == SUCCESS)
 	{
 		if (strcmp(*(parms + new_offset), "-user") == 0)
 		{
-			check_action = do_user(file_name, parms, (new_offset + 1));
-						
+			check_action = do_user(buf, parms, (new_offset + 1));
 			new_offset = new_offset + 2;
-			print_done = check_action;
-			
 			continue;
 		}
 
@@ -123,40 +123,45 @@ static void do_file(const char *file_name, const char * const * parms, const int
 		}
 		if (strcmp(*(parms + new_offset), "-type") == 0)
 		{
-			//check_action = do_type(buf, parms, new_offset + 1);
-			check_action = ERROR;
-			new_offset = new_offset + 2;
-			continue;
+			check_action = do_type(buf, parms, (new_offset + 1));
+			if (check_action == SUCCESS)
+			{
+				do_print(file_name, parms);
+				return;
+			}
+			
 		}
 		if (strcmp(*(parms + new_offset), "-print") == 0)
 		{
 			check_action = do_print(file_name, parms);
 			new_offset = new_offset + 1;
-			print_done = SUCCESS;
+			print_done = TRUE;
 			continue;
 		}
 		if (strcmp(*(parms + new_offset), "-ls") == 0)
 		{
 			//check_action = do_ls(buf, file_name, parms);
+			check_action = ERROR;
 			new_offset = new_offset + 1;
-			print_done = check_action;
+			print_done = TRUE;
 			continue;
 		}
 		if (strcmp(*(parms + new_offset), "-nouser") == 0)
 		{
-			//check_action = do_no_user(buf, file_name, parms);
+			check_action = do_nouser(buf, parms);
 			new_offset = new_offset + 1;
 			continue;
 		}
 		if (strcmp(*(parms + new_offset), "-path") == 0)
 		{
-			//check_action = do_path(file_name, parms, new_offset + 1);
+			//check_action = do_path(file_name, parms, (new_offset + 1));
+			check_action = ERROR;
 			new_offset = new_offset + 2;
 			continue;
 		}
 	}
 
-	if (print_done == ERROR && check_action == SUCCESS)
+	if (print_done == FALSE && check_action == SUCCESS)
 	{
 		do_print(file_name, parms);
 	}
@@ -187,17 +192,7 @@ static void do_dir(const char * dir_name, const char * const * parms, const int 
 
 	errno = 0; /*reset errno*/
 	dp = readdir(dirp);
-
-	if (dp == NULL)
-	{
-		if (closedir(dirp) == -1)
-		{
-			fprintf(stderr, "%s: error closing directory %s\n", strerror(errno), dir_name);
-		}
-
-		return;
-	}
-
+	
 	while (dp != NULL)
 	{
 		sub_file_name = dp->d_name;
@@ -222,30 +217,30 @@ static void do_dir(const char * dir_name, const char * const * parms, const int 
 			do_file(new_path, parms, offset);
 		}
 
-		if (errno != 0)
+		/*if (errno != 0)
 		{
-			fprintf(stderr, "%s: error reading information of dir: %s\n", strerror(errno), dir_name);
-		}
-
-		errno = 0; /*reset errno*/
-
+			fprintf(stderr, "%s: %s - ´%s'\n", *parms, dir_name, strerror(errno));
+			errno = 0; 
+			continue;
+		}*/
+		
+		errno = 0;
 		dp = readdir(dirp);
 
 	}
-
+	
 	if (errno != 0)
 	{
-		fprintf(stderr, "%s: error reading information of dir: %s\n", strerror(errno), dir_name);
+		fprintf(stderr, "%s: error while processing directory %s\n", *parms, dir_name);
 	}
-
+	
 	if (closedir(dirp) == -1)
 	{
-		fprintf(stderr, "%s: error closing directory %s\n", strerror(errno), dir_name);
+		fprintf(stderr, "%s: error closing directory %s\n", *parms, dir_name);
 	}
 
 	return;
 }
-
 
 static int do_print(const char * file_name, const char * const * parms)
 {
@@ -258,75 +253,205 @@ static int do_print(const char * file_name, const char * const * parms)
 	return SUCCESS;
 }
 
-static int do_check_parms(const char * const * parms, const int offset)
-{
-	int new_offset = offset;
 
-	/*if(strcmp(*(parms + 1), ".") == 0  ||
-	   strcmp(*(parms + 1), "..") == 0  ||
-	   strcmp(*(parms + 1), "/") == 0)
-	{*/
-		while (*(parms + new_offset) != NULL)
+static int do_check_parms(const char * const * parms)
+{
+	int offset = 2;
+	char ** cur_Arg = (char **) (parms + offset);
+	
+		while (*cur_Arg != NULL)
 		{
-			if (strcmp(*(parms + new_offset), "-user") == 0 ||
-				strcmp(*(parms + new_offset), "-name") == 0 ||
-				strcmp(*(parms + new_offset), "-type") == 0 ||
-				strcmp(*(parms + new_offset), "-path") == 0)
+			if (strcmp(*cur_Arg, "-user") == 0 ||
+				strcmp(*cur_Arg, "-name") == 0 ||
+				strcmp(*cur_Arg, "-type") == 0 ||
+				strcmp(*cur_Arg, "-path") == 0)
 			{
-				if (*(parms + new_offset + 1) == NULL ||
-					strcmp(*(parms + new_offset + 1), "-user") == 0 ||
-					strcmp(*(parms + new_offset + 1), "-name") == 0 ||
-					strcmp(*(parms + new_offset + 1), "-type") == 0 ||
-					strcmp(*(parms + new_offset + 1), "-path") == 0 ||
-					strcmp(*(parms + new_offset + 1), "-nouser") == 0 ||
-					strcmp(*(parms + new_offset + 1), "-print") == 0 ||
-					strcmp(*(parms + new_offset + 1), "-ls") == 0)
+				if (*(cur_Arg + 1) == NULL ||
+					strcmp(*(cur_Arg + 1), "-user") == 0 ||
+					strcmp(*(cur_Arg + 1), "-name") == 0 ||
+					strcmp(*(cur_Arg + 1), "-type") == 0 ||
+					strcmp(*(cur_Arg + 1), "-path") == 0 ||
+					strcmp(*(cur_Arg + 1), "-nouser") == 0 ||
+					strcmp(*(cur_Arg + 1), "-print") == 0 ||
+					strcmp(*(cur_Arg + 1), "-ls") == 0)
 				{
-					fprintf(stderr, "%s: missing additional parameters `%s'\n", *parms, *(parms + new_offset));
+					fprintf(stderr, "%s: missing additional parameters `%s'\n", *parms, *cur_Arg);
 					return ERROR;
 				}
 
-				new_offset = new_offset + 2;
+				if (strcmp(*cur_Arg, "-type") == 0)
+				{
+					if ( strcmp(*(cur_Arg + 1), "b") && strcmp(*(cur_Arg + 1), "c") &&
+						strcmp(*(cur_Arg + 1), "d") && strcmp(*(cur_Arg + 1), "p") &&
+						strcmp(*(cur_Arg + 1), "f") && strcmp(*(cur_Arg + 1), "l") &&
+						strcmp(*(cur_Arg + 1), "s") != 0)
+					{
+						fprintf(stderr, "%s: only one type of [bfcdpls]\n", *parms);
+						return ERROR;
+					}
+				}
+				
+				cur_Arg = cur_Arg + 2;
 			}
-			else if (strcmp(*(parms + new_offset), "-nouser") == 0 ||
-				strcmp(*(parms + new_offset), "-print") == 0 ||
-				strcmp(*(parms + new_offset), "-ls") == 0)
+			else if (strcmp(*cur_Arg, "-nouser") == 0 ||
+				strcmp(*cur_Arg, "-print") == 0 ||
+				strcmp(*cur_Arg, "-ls") == 0)
 			{
-				new_offset = new_offset + 1;
+				cur_Arg = cur_Arg + 1;
 			}
 			else
 			{
 				return ERROR;
 			}
 		}
-	/*}
-	else
-	{
-		fprintf(stderr, "%s: `%s' No such file or directory\n", *parms, *(parms + 1));
-		return ERROR;
-	}*/
-	
+			
 	return SUCCESS;
+	
 }
 
 
-static int do_user(const char * file_name, const char * const * parms, const int offset)
+
+
+
+static int do_user(const struct stat buffer, const char * const * parms, const int offset)
 {
 	errno = 0; //reset errno
-
+	
+	unsigned long uid = 0;
+	char * p_end = NULL;
+	
 	const struct passwd *pwd_entry = getpwnam(*(parms + offset));
 
-	if (pwd_entry == NULL)
+	if (errno != 0)
 	{
-		//fprintf(stderr, "%s: User not found %s\n", strerror(errno), *(parms));
-		fprintf(stderr, "%s: `%s' is not the name of a known user\n", *parms, *(parms + offset));
-		
+		fprintf(stderr, "%s: error while processing -user %s\n", *parms, *(parms + offset));
 		return ERROR;
-
 	}
 
-	do_print(file_name, parms);
-	
+	if (pwd_entry != NULL)
+	{
+		//check if user found
+		if (pwd_entry->pw_uid == buffer.st_uid)
+		{
+			return SUCCESS;
+		}
+
+		//fprintf(stderr, "%s: User not found %s\n", strerror(errno), *(parms));
+		
+	}
+	else //user not found, check uid
+	{
+		//conversion into long int
+		uid = strtol(*(parms + offset), &p_end, 10);
+
+		if (uid == LONG_MAX || LONG_MIN)
+		{
+			fprintf(stderr, "%s: error overflow when trying to parse -user %s\n", *parms, *(parms + offset));
+			exit(EXIT_FAILURE);
+		}
+		if (*p_end == '\0')
+		{
+			//check if uid found
+			if (uid == buffer.st_uid)
+			{
+				return SUCCESS;
+			}
+		}
+		else
+		{
+			fprintf(stderr, "%s: %s is not the name of a known user\n", *parms, *(parms + offset));
+			exit(EXIT_FAILURE);
+		}
+		
+	}
+		
 	return SUCCESS;
 
 }
+
+static int do_nouser(const struct stat buffer, const char * const * parms)
+{	
+	errno = 0; //reset errno
+
+	const struct passwd *pwd_entry = getpwuid(buffer.st_uid);
+	
+	//check if file is with nouser, else user or errno exit like find
+	if ((pwd_entry == NULL) && (errno == 0))
+	{
+		return ERROR;
+	}
+	else if ((pwd_entry != NULL) || (errno != 0))
+	{
+		fprintf(stderr, "%s: no file without user \n", *parms);
+		exit(EXIT_FAILURE);
+	}
+	
+	return SUCCESS;
+	
+}
+
+static int do_type(const struct stat buffer, const char* const* parms, const int offset)
+{
+	char type_char = NULL;
+
+	//check type char of file_name
+	type_char = get_type(buffer.st_mode);
+			
+	if (type_char == **(parms + offset))
+	{	
+		return SUCCESS;
+				
+	}
+	else if (type_char != **(parms + offset))
+	{
+		//wrong parameter type
+		fprintf(stderr, "%s: wrong parameter type \n", *parms);
+		exit(EXIT_FAILURE);
+	}
+
+	return ERROR;
+}
+
+/*
+* returns the type of the file (bfcdpls) or default '\n'
+*/
+static char get_type(const mode_t mode)
+{
+	char type = '\n';
+	
+	if (S_ISBLK(mode))
+	{
+		type = 'b';
+	}
+	else if (S_ISREG(mode))
+	{
+		type = 'f';
+	}
+	else if (S_ISCHR(mode))
+	{
+		type = 'c';
+	}
+	else if (S_ISDIR(mode))
+	{
+		type = 'd';
+	}
+	else if (S_ISFIFO(mode))
+	{
+		type = 'p';
+	}
+	else if (S_ISLNK(mode))
+	{
+		type = 'l';
+	}
+	else if (S_ISSOCK(mode))
+	{
+		type = 's';
+	}
+	return type;
+}
+
+
+
+
+
+
