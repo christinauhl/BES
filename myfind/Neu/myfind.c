@@ -242,6 +242,9 @@ static void do_dir(const char * dir_name, const char * const * parms, const int 
 	return;
 }
 
+/*
+*function to print the located file
+*/
 static int do_print(const char * file_name, const char * const * parms)
 {
 	if (fprintf(stdout, "%s\n", file_name) < 0)
@@ -253,7 +256,9 @@ static int do_print(const char * file_name, const char * const * parms)
 	return SUCCESS;
 }
 
-
+/*
+*function to check the prompted parameters on correctness
+*/
 static int do_check_parms(const char * const * parms)
 {
 	int offset = 2;
@@ -278,7 +283,40 @@ static int do_check_parms(const char * const * parms)
 					fprintf(stderr, "%s: missing additional parameters `%s'\n", *parms, *cur_Arg);
 					return ERROR;
 				}
+				
+				if (strcmp(*cur_Arg, "-user") == 0)
+				{
+					errno = 0; //reset errno
+										
+					signed long uid = 0;
+					char * p_end;
 
+					const struct passwd *pwd_entry = getpwnam(*(cur_Arg + 1));
+
+					if (errno != 0)
+					{
+						fprintf(stderr, "%s: error while processing -user %s\n", *parms, *(cur_Arg + 1));
+						return ERROR;
+					}
+
+					if (pwd_entry == NULL) //user was not found
+					{
+						//conversion into long int
+						uid = strtol(*cur_Arg, &p_end, 10);
+
+						if (uid == LONG_MAX || uid == LONG_MIN)
+						{
+							fprintf(stderr, "%s: error overflow when trying to parse -user %s\n", *parms, *(cur_Arg + 1));
+							exit(EXIT_FAILURE);
+						}
+						if (*p_end != '\0')
+						{							
+							fprintf(stderr, "%s: %s is not the name of a known user\n", *parms, *(cur_Arg + 1));
+							exit(EXIT_FAILURE);
+						}
+					}
+				}
+				
 				if (strcmp(*cur_Arg, "-type") == 0)
 				{
 					if ( strcmp(*(cur_Arg + 1), "b") && strcmp(*(cur_Arg + 1), "c") &&
@@ -310,15 +348,19 @@ static int do_check_parms(const char * const * parms)
 }
 
 
-
-
-
+/*
+*Checks if the searched user has a file
+*First the name is searched and if not found then it will
+*check if the entry was an uid
+*If there is no file with the name or uid is looked for,
+*then Exit like as find
+*/
 static int do_user(const struct stat buffer, const char * const * parms, const int offset)
 {
 	errno = 0; //reset errno
 	
-	unsigned long uid = 0;
-	char * p_end = NULL;
+	signed long uid = 0;
+	char * p_end = '\0';
 	
 	const struct passwd *pwd_entry = getpwnam(*(parms + offset));
 
@@ -335,16 +377,13 @@ static int do_user(const struct stat buffer, const char * const * parms, const i
 		{
 			return SUCCESS;
 		}
-
-		//fprintf(stderr, "%s: User not found %s\n", strerror(errno), *(parms));
-		
 	}
 	else //user not found, check uid
 	{
 		//conversion into long int
 		uid = strtol(*(parms + offset), &p_end, 10);
 
-		if (uid == LONG_MAX || LONG_MIN)
+		if (uid == LONG_MAX || uid == LONG_MIN)
 		{
 			fprintf(stderr, "%s: error overflow when trying to parse -user %s\n", *parms, *(parms + offset));
 			exit(EXIT_FAILURE);
@@ -352,7 +391,7 @@ static int do_user(const struct stat buffer, const char * const * parms, const i
 		if (*p_end == '\0')
 		{
 			//check if uid found
-			if (uid == buffer.st_uid)
+			if ((unsigned)uid == buffer.st_uid)
 			{
 				return SUCCESS;
 			}
@@ -369,6 +408,11 @@ static int do_user(const struct stat buffer, const char * const * parms, const i
 
 }
 
+/*
+*Checks if the file has no user
+*TRUE if there is a file with no user
+*EXIT if ther is no file with no user like as find
+*/
 static int do_nouser(const struct stat buffer, const char * const * parms)
 {	
 	errno = 0; //reset errno
@@ -378,7 +422,7 @@ static int do_nouser(const struct stat buffer, const char * const * parms)
 	//check if file is with nouser, else user or errno exit like find
 	if ((pwd_entry == NULL) && (errno == 0))
 	{
-		return ERROR;
+		return TRUE;
 	}
 	else if ((pwd_entry != NULL) || (errno != 0))
 	{
@@ -390,6 +434,10 @@ static int do_nouser(const struct stat buffer, const char * const * parms)
 	
 }
 
+/*
+*SUCCESS if the given file has the searched parameter 
+*EXIT if the file has not the searched parameter like as find
+*/
 static int do_type(const struct stat buffer, const char* const* parms, const int offset)
 {
 	char type_char = NULL;
