@@ -4,8 +4,8 @@
 ## Beispiel 1
 ##
 ## @author Ralf Ziefuhs <ic17b065@technikum-wien.at>
-## @author Christina Uhl<ic17b089@technikum-wien.at>
-## @author Clemens Fritzsche<ic17b087@technikum-wien.at>
+## @author Christina Uhl <ic17b089@technikum-wien.at>
+## @author Clemens Fritzsche <ic17b087@technikum-wien.at>
 ## @date 2018/04/06
 ##
 ## @version $Revision: 1 $
